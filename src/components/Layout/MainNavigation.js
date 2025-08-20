@@ -28,6 +28,7 @@ const MainNavigation = () => {
 
           {isLoggedIn && (
             <li>
+              {/* here we can logout using token clear  */}
               <button onClick={authCtx.logout}>Logout</button>
             </li>
           )}
