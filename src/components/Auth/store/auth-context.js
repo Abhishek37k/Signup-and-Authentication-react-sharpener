@@ -1,5 +1,6 @@
-import React, {  useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useHistory } from "react-router-dom";
+
 const authContext = React.createContext({
   token: "",
   isLoggedIn: false,
@@ -7,34 +8,52 @@ const authContext = React.createContext({
   logout: () => {},
 });
 
-export const AuthContextProvider = (props) => {
+const EXP_MS = 5 * 60 * 1000;
 
+export const AuthContextProvider = (props) => {
   const initialToken = localStorage.getItem("token");
   const [token, setToken] = useState(initialToken);
   const history = useHistory();
   const userIsLoggedIn = !!token;
 
-  const loginHandler = (token) => {
-    localStorage.setItem("token", token);
-    setToken(token);
+  const timerRef = useRef(null);
+  const clearTimer = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+  };
+
+  const loginHandler = (newToken) => {
+    const expiryAt = Date.now() + EXP_MS;
+    localStorage.setItem("token", newToken);
+    localStorage.setItem("tokenExpiry", String(expiryAt));
+    setToken(newToken);
+    clearTimer();
+    timerRef.current = setTimeout(() => logoutHandler(), EXP_MS);
   };
 
   const logoutHandler = () => {
+    clearTimer();
     setToken(null);
     localStorage.removeItem("token");
-    history.replace("/");
+    localStorage.removeItem("tokenExpiry");
+    history.replace("/"); // v5 navigation
   };
-  const contextValue = {
-    token: token,
-    isLoggedIn: userIsLoggedIn,
-    login: loginHandler,
-    logout: logoutHandler,
-  };
-  // this is inside the authcontextprovider component
-  return (
-    <authContext.Provider value={contextValue}>
-      {props.children}
-    </authContext.Provider>
-  );
+
+  useEffect(() => {
+    const expiry = Number(localStorage.getItem("tokenExpiry") || 0);
+    if (!initialToken || !expiry || Date.now() >= expiry) {
+      logoutHandler(); // refresh after 5m => forced login
+      return;
+    }
+    const remaining = Math.max(0, expiry - Date.now());
+    timerRef.current = setTimeout(() => logoutHandler(), remaining);
+    return () => clearTimer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const contextValue = { token, isLoggedIn: userIsLoggedIn, login: loginHandler, logout: logoutHandler };
+
+  return <authContext.Provider value={contextValue}>{props.children}</authContext.Provider>;
 };
+
 export default authContext;
